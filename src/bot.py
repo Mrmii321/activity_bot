@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import logging
+from utils.db import initialize_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,7 @@ async def on_ready():
     await load_cogs()
     logger.info('All cogs are loaded and bot is ready to use')
 
+initialize_db()  # Initialize the database
 logger.info('Running bot')
 bot.run(os.getenv('DISCORD_TOKEN'))  # Use environment variable for the token
 logger.info('Bot has stopped')
