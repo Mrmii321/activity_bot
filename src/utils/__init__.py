@@ -1,1 +1,4 @@
-from .get_linked_users import load_user_data, parse_aof_data, combine_into_one_list
+# Initialize the utils package
+from .db import Database
+from .get_linked_users import LinkedUsers
+from .get_inactive_users import UserActivity

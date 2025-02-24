@@ -4,10 +4,12 @@ import discord
 from discord.ext import commands
 import logging
 import pytz
-from utils.db import get_db_connection
+from utils.db import Database
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+database = Database()
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ class FlagScanner(commands.Cog):
     async def _get_last_message_time(self, member):
         """Fetch the last message time for a member from the database."""
         logger.info(f"Fetching last message time for member: {member.id}")
-        with get_db_connection() as conn:
+        with database.get_db_connection() as conn:
             result = conn.execute('''
                 SELECT created_at FROM messages
                 WHERE user_id = ?
@@ -70,7 +72,7 @@ class FlagScanner(commands.Cog):
         """Fetch the number of messages sent by a member in the past month from the database."""
         logger.info(f"Fetching messages past month for member: {member.id}")
         one_month_ago = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
-        with get_db_connection() as conn:
+        with database.get_db_connection() as conn:
             result = conn.execute('''
                 SELECT COUNT(*) as message_count FROM messages
                 WHERE user_id = ? AND created_at >= ?

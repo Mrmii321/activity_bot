@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import logging
-from utils.db import initialize_db
+from utils.db import Database
 from Variables.sensitiveVars import SensitiveVariables
 
 # Configure logging
@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize sensitive variables
 sensitive_vars = SensitiveVariables()
+
+# Initialize the database
+database = Database()
 
 intents = discord.Intents.all()
 intents.message_content = True  # Enable the message content intent
@@ -30,7 +33,7 @@ async def on_ready():
     await load_cogs()
     logger.info('All cogs are loaded and bot is ready to use')
 
-initialize_db()  # Initialize the database
+database.initialize_db()  # Initialize the database
 logger.info('Running bot')
 bot.run(sensitive_vars.bot_token)  # Use bot token from sensitive variables
 logger.info('Bot has stopped')
