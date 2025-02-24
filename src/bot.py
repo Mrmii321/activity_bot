@@ -20,6 +20,7 @@ logger.info('Starting bot')
 async def load_cogs():
     logger.info('Loading cogs')
     await bot.load_extension('cogs.flag_scanner')
+    await bot.load_extension('cogs.inactive_users')
     logger.info('Cogs loaded')
 
 
