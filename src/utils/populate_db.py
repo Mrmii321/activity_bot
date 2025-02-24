@@ -7,14 +7,15 @@ import datetime
 import pytz
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+from Variables.sensitiveVars import SensitiveVariables
 from utils.db import get_db_connection
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()  # Load environment variables from .env file
+# Initialize sensitive variables
+sensitive_vars = SensitiveVariables()
 
 intents = discord.Intents.all()
 intents.message_content = True  # Enable the message content intent
@@ -50,5 +51,5 @@ async def populate_db():
     logger.info('Database population complete')
 
 logger.info('Running bot')
-bot.run(os.getenv('DISCORD_TOKEN'))  # Use environment variable for the token
+bot.run(sensitive_vars.bot_token)  # Use bot token from sensitive variables
 logger.info('Bot has stopped')

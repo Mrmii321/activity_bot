@@ -25,7 +25,8 @@ def initialize_db():
                     user_id TEXT NOT NULL,
                     channel_id TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    created_at TIMESTAMP NOT NULL
+                    created_at TIMESTAMP NOT NULL,
+                    is_linked BOOLEAN DEFAULT 0
                 )
             ''')
     logger.info('Database initialized')

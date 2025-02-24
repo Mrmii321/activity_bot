@@ -12,7 +12,7 @@ async def get_inactive_users(bot):
     active_user_ids = set()
     with get_db_connection() as conn:
         result = conn.execute('''
-            SELECT user_id FROM messages
+            SELECT user_id FROM messages WHERE is_linked = 1
         ''').fetchall()
         for row in result:
             active_user_ids.add(row['user_id'])

@@ -1,15 +1,15 @@
 import discord
 from discord.ext import commands
-import os
-from dotenv import load_dotenv
 import logging
 from utils.db import initialize_db
+from Variables.sensitiveVars import SensitiveVariables
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()  # Load environment variables from .env file
+# Initialize sensitive variables
+sensitive_vars = SensitiveVariables()
 
 intents = discord.Intents.all()
 intents.message_content = True  # Enable the message content intent
@@ -23,7 +23,6 @@ async def load_cogs():
     await bot.load_extension('cogs.inactive_users')
     logger.info('Cogs loaded')
 
-
 @bot.event
 async def on_ready():
     logger.info('Bot is ready')
@@ -33,5 +32,5 @@ async def on_ready():
 
 initialize_db()  # Initialize the database
 logger.info('Running bot')
-bot.run(os.getenv('DISCORD_TOKEN'))  # Use environment variable for the token
+bot.run(sensitive_vars.bot_token)  # Use bot token from sensitive variables
 logger.info('Bot has stopped')
