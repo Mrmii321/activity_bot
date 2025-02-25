@@ -5,11 +5,14 @@ from discord.ext import commands
 import logging
 import pytz
 from utils.db import Database
+from flags import Flag
 
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
 
 database = Database()
+database.initialize_db()
 
 logger = logging.getLogger(__name__)
 
@@ -31,74 +34,106 @@ class FlagScanner(commands.Cog):
         self.bot = bot
         self.df = pd.DataFrame(columns=["user_id", "last_message", "messages_past_month", "days_since_last_message", "final_score"])
         logger.info("FlagScanner cog initialized")
-        self.member = None
+        self.flag = Flag(bot)
+        self.db = Database()
 
-    async def _initialize_dataframe(self, guild):
-        """Initialize the DataFrame with user data and calculate initial scores."""
-        logger.info("Initializing DataFrame with user data")
+    async def _initialize_dataframe(self):
+        """Initialize the DataFrame with user data and calculate initial scores from the database."""
+        logger.info("Initializing DataFrame with user data from the database")
         user_data = []
-        logger.info(f"Fetching data for member: {self.member.id}")
-        user_id = self.member.id
-        last_message = await self._get_last_message_time(self.member)
-        messages_past_month = await self._get_messages_past_month(self.member)
-        user_data.append({
-            "user_id": user_id,
-            "last_message": last_message,
-            "messages_past_month": messages_past_month
-        })
+        with database.get_db_connection() as conn:
+            result = conn.execute('''
+                SELECT DISTINCT user_id FROM messages
+            ''').fetchall()
+        
+        for row in result:
+            user_id = row['user_id']
+            logger.info(f"Fetching data for user: {user_id}")
+            last_message = await self._get_last_message_time(user_id)
+            messages_past_month = await self._get_messages_past_month(user_id)
+            flags = await self.flag.get_user_activity_flags(user_id)
+            user_data.append({
+                "user_id": user_id,
+                "last_message": last_message,
+                "messages_past_month": messages_past_month,
+                **flags
+            })
+        
         df = pd.DataFrame(user_data)
         df["last_message"] = pd.to_datetime(df["last_message"])
         df["last_message"] = df["last_message"].dt.tz_localize('UTC', ambiguous='NaT') if df["last_message"].dt.tz is None else df["last_message"]
         df["days_since_last_message"] = (today - df["last_message"]).dt.days
+        logger.info(f"Calculating score for user {row['user_id']}")
         df["final_score"] = df.apply(self._calculate_score, axis=1)
+        logger.info(f"Calculated scores: {df[['user_id', 'final_score']]}")
         self.df = df
         logger.info("DataFrame initialization complete")
+        logger.info(f"DataFrame content: {self.df}")
 
-    async def _get_last_message_time(self, member):
-        """Fetch the last message time for a member from the database."""
-        logger.info(f"Fetching last message time for member: {member.id}")
+        # Update the final scores in the database
+        for _, row in df.iterrows():
+            logger.info(f"Updating final score for user {row['user_id']} to {row['final_score']}")
+            database.update_final_score(row['user_id'], row['final_score'])
+
+    async def _get_last_message_time(self, user_id):
+        """Fetch the last message time for a user from the database."""
+        logger.info(f"Fetching last message time for user: {user_id}")
         with database.get_db_connection() as conn:
             result = conn.execute('''
                 SELECT created_at FROM messages
                 WHERE user_id = ?
                 ORDER BY created_at DESC
                 LIMIT 1
-            ''', (str(member.id),)).fetchone()
+            ''', (str(user_id),)).fetchone()
         last_message = result['created_at'] if result else None
-        logger.info(f"Last message time for member {member.id}: {last_message}")
+        logger.info(f"Last message time for user {user_id}: {last_message}")
         return last_message
 
-    async def _get_messages_past_month(self, member):
-        """Fetch the number of messages sent by a member in the past month from the database."""
-        logger.info(f"Fetching messages past month for member: {member.id}")
+    async def _get_messages_past_month(self, user_id):
+        """Fetch the number of messages sent by a user in the past month from the database."""
+        logger.info(f"Fetching messages past month for user: {user_id}")
         one_month_ago = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=30)
         with database.get_db_connection() as conn:
             result = conn.execute('''
                 SELECT COUNT(*) as message_count FROM messages
                 WHERE user_id = ? AND created_at >= ?
-            ''', (str(member.id), one_month_ago)).fetchone()
+            ''', (str(user_id), one_month_ago)).fetchone()
         count = result['message_count'] if result else 0
-        logger.info(f"Messages past month for member {member.id}: {count}")
+        logger.info(f"Messages past month for user {user_id}: {count}")
         return count
 
     def _calculate_score(self, row):
-        """Calculate the score for a given user row."""
-        logger.info(f"Calculating score for row: {row}")
-        score = 100  # Start with max score
-        
-        # Deduct points for inactivity
-        if row["days_since_last_message"] > 30:
-            score -= min((row["days_since_last_message"] // 5) * 5, 50)
-        elif row["days_since_last_message"] == None or 'NaT':
-            score -= 50
-        
-        # Add points for activity (bonus starts at 100 and scales in 100‑point increments per 20 messages, capped at 1000)
-        if row["messages_past_month"] > 20:
-            score += min((row["messages_past_month"] // 20) * 100, 1000)
+        """Dynamically calculate a new score for a given user row based on activity and flags using loops for dynamic accumulation."""
+        score = 0
+        # Increment base score: each message contributes an increasing amount
+        num_messages = int(row.get("messages_past_month", 0))
+        for i in range(num_messages):
+            score += 5 + (i * 0.2)  # each subsequent message adds slightly more
 
-        
-        logger.info(f"Final score for row: {score}")
-        return max(score, 0)  # Ensure score doesn't go negative
+        # Dynamic flag contributions using a loop
+        flag_weights = {
+            "sent_messages_after_joining": 50,
+            "messaged_within_30_days": 100,
+            "above_100_messages": 150,
+            "below_10_messages": -50,
+            "never_messaged": -200,
+            "no_role_assigned": -100,
+            "low_interaction_high_activity": -150
+        }
+        for flag, weight in flag_weights.items():
+            if row.get(flag):
+                score += weight
+
+        # Time adjustment based on recency using loops
+        days = int(row.get("days_since_last_message", 0))
+        if days <= 7:
+            for _ in range(7 - days):
+                score += 10
+        elif days > 30:
+            for _ in range(days - 30):
+                score -= 5
+
+        return score
 
     async def get_user_data(self, user_id):
         """Retrieve user data for a given user ID."""
@@ -111,44 +146,104 @@ class FlagScanner(commands.Cog):
         return None
 
     async def calculate_score(self, user_id):
-        """Calculate the score for a given user ID."""
-        logger.info(f"Calculating score for user ID: {user_id}")
-        user_data = await self.get_user_data(user_id)
-        if user_data is not None:
-            logger.info(f"User data found for user ID: {user_id}")
-            return user_data["final_score"]
-        logger.info(f"No user data found for user ID: {user_id}")
-        return 0
+        """Calculate the score for a given user."""
+        # Fetch necessary data
+        last_message = await self._get_last_message_time(user_id)
+        messages_past_month = await self._get_messages_past_month(user_id)
+        flags = await self.flag.get_user_activity_flags(user_id)
+
+        # Create a DataFrame row for the user
+        user_row = {
+            "user_id": user_id,
+            "last_message": last_message,
+            "messages_past_month": messages_past_month,
+            **flags
+        }
+
+        # Calculate the score using the same logic as _calculate_score
+        score = self._calculate_score(user_row)
+
+        # Update the final score in the database
+        database.update_final_score(user_id, score)
+
+        logger.info(f"Final score for user {user_id}: {score}")
+        return score
 
     @commands.command(name="checkscore")
-    async def check_score(self, ctx, member: discord.Member = None, user_id: int = None):
-        """Command to check the score of a mentioned user or by user ID."""
-        if member is None and user_id is None:
-            await ctx.send("Please provide a user mention or user ID.")
+    async def check_score(self, ctx, user_id: str = None):
+        """Command to check the score of a user by user ID."""
+        if user_id is None:
+            await ctx.send("Please provide a user ID.")
             return
-        
-        if member is not None:
-            user_id = member.id
-        else:
-            member = ctx.guild.get_member(user_id)
-            if member is None:
-                await ctx.send("User not found.")
-                return
-        
+
+        # Strip mention format if present
+        if user_id.startswith('<@') and user_id.endswith('>'):
+            user_id = user_id[2:-1]
+            if user_id.startswith('!'):
+                user_id = user_id[1:]
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            await ctx.send("Invalid user ID format.")
+            return
+
         start_time = datetime.datetime.now()
-        self.member = member
-        
-        logger.info(f"Checking score for user ID: {user_id}")
-        
-        await self._initialize_dataframe(ctx.guild)
+        logger.info(f"Recalculating score for user ID: {user_id}")
+
+        # Recalculate the score dynamically using the new logic
         score = await self.calculate_score(user_id)
+        logger.info(f"Dynamic score for user {user_id}: {score}")
 
-        dataframe_to_image(self.df, "table.png")
+        # Create a DataFrame for the user score
+        user_score_df = pd.DataFrame({
+            "user_id": [user_id],
+            "score": [score],
+            "sent_messages_after_joining": [await self.flag.sent_messages_after_joining(user_id)],
+            "messaged_within_30_days": [await self.flag.messaged_within_x_days(user_id, 30)],
+            "above_100_messages": [await self.flag.above_x_messages(user_id, 100)],
+            "below_10_messages": [await self.flag.below_x_messages(user_id, 10)],
+            "never_messaged": [await self.flag.never_messaged(user_id)],
+            "no_role_assigned": [await self.flag.no_role_assigned(user_id)],
+            "low_interaction_high_activity": [await self.flag.low_interaction_high_activity(user_id)]
+        })
 
-        await ctx.send(f"{member.name}'s score is {score}", file=discord.File("table.png"))
-        
+        # Convert the DataFrame to an image
+        dataframe_to_image(user_score_df, filename="user_score.png")
+
+        # Send the image
+        await ctx.send(file=discord.File("user_score.png"))
+
         end_time = datetime.datetime.now()
-        logger.info(f"Score check completed in {end_time - start_time}")
+        logger.info(f"Score recalculation completed in {end_time - start_time}")
+
+    @commands.command(name='scanflag')
+    async def scan_flag(self, ctx, *, flag: str):
+        # Validate flag format: expecting FLAG{...}
+        pattern = r'^FLAG\{[A-Za-z0-9_-]+\}$'
+        if not re.match(pattern, flag):
+            await ctx.send('Invalid flag format. Expected format: FLAG{...}')
+            return
+
+        try:
+            self.db.add_flag(ctx.author.id, flag)
+            await ctx.send('Flag accepted!')
+        except Exception as e:
+            logger.error(f'Error adding flag: {e}')
+            await ctx.send('Error processing your flag.')
+
+    @commands.command(name='myflags')
+    async def my_flags(self, ctx):
+        try:
+            flags = self.db.get_flags_by_user(ctx.author.id)
+            if flags:
+                flags_list = '\n'.join(flags)
+                await ctx.send(f'Your submitted flags:\n{flags_list}')
+            else:
+                await ctx.send('You have not submitted any flags yet.')
+        except Exception as e:
+            logger.error(f'Error retrieving flags: {e}')
+            await ctx.send('Error retrieving your flags.')
+
 
 async def setup(bot):
     await bot.add_cog(FlagScanner(bot))
