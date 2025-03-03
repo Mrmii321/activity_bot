@@ -188,34 +188,6 @@ class FlagScanner(commands.Cog):
         end_time = datetime.datetime.now()
         logger.info(f"Score recalculation completed in {end_time - start_time}")
 
-    @commands.command(name='scanflag')
-    async def scan_flag(self, ctx, *, flag: str):
-        # Validate flag format: expecting FLAG{...}
-        pattern = r'^FLAG\{[A-Za-z0-9_-]+\}$'
-        if not re.match(pattern, flag):
-            await ctx.send('Invalid flag format. Expected format: FLAG{...}')
-            return
-
-        try:
-            self.db.add_flag(ctx.author.id, flag)
-            await ctx.send('Flag accepted!')
-        except Exception as e:
-            logger.error(f'Error adding flag: {e}')
-            await ctx.send('Error processing your flag.')
-
-    @commands.command(name='myflags')
-    async def my_flags(self, ctx):
-        try:
-            flags = self.db.get_flags_by_user(ctx.author.id)
-            if flags:
-                flags_list = '\n'.join(flags)
-                await ctx.send(f'Your submitted flags:\n{flags_list}')
-            else:
-                await ctx.send('You have not submitted any flags yet.')
-        except Exception as e:
-            logger.error(f'Error retrieving flags: {e}')
-            await ctx.send('Error retrieving your flags.')
-
 
 async def setup(bot):
     await bot.add_cog(FlagScanner(bot))
