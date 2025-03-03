@@ -7,6 +7,7 @@ from utils.db import Database
 from Variables.sensitiveVars import SensitiveVariables
 from cogs.flag_scanner import FlagScanner
 from cogs.leaderboard import Leaderboard
+from cogs.inactive_users import InactiveUsers
 import atexit
 
 # Configure logging
@@ -26,13 +27,23 @@ bot = commands.Bot(command_prefix=',', intents=intents)
 logger.info('Starting bot')
 
 async def load_cogs():
+    # TODO: Make the commands require staff roles
     await bot.add_cog(FlagScanner(bot))
     await bot.add_cog(Leaderboard(bot))
+    await bot.add_cog(InactiveUsers(bot))
 
 @bot.event
 async def on_ready():
     await load_cogs()
     logger.info('Bot is ready')
+
+def stop_flask_server():
+    logger.info('Stopping Flask web server')
+    # Assuming webapp.app has a method to stop the server
+    webapp.app.shutdown()
+
+# Register the stop_flask_server function to be called on exit
+atexit.register(stop_flask_server)
 
 # Start the Flask web server in a separate thread
 logger.info('Starting Flask web server on port 8000')
@@ -42,8 +53,3 @@ flask_thread.start()
 logger.info('Running bot')
 bot.run(sensitive_vars.bot_token)
 logger.info('Bot has stopped')
-def stop_flask_thread():
-    logger.info('Stopping Flask web server')
-    flask_thread.join()
-
-atexit.register(stop_flask_thread)
