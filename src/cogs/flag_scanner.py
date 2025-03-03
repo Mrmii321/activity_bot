@@ -10,6 +10,7 @@ from flags import Flag
 import matplotlib.pyplot as plt
 import seaborn as sns
 import re
+from utils.score_calculator import calculate_score  # added import for shared score calculation
 
 database = Database()
 database.initialize_db()
@@ -103,37 +104,8 @@ class FlagScanner(commands.Cog):
         return count
 
     def _calculate_score(self, row):
-        """Dynamically calculate a new score for a given user row based on activity and flags using loops for dynamic accumulation."""
-        score = 0
-        # Increment base score: each message contributes an increasing amount
-        num_messages = int(row.get("messages_past_month", 0))
-        for i in range(num_messages):
-            score += 5 + (i * 0.2)  # each subsequent message adds slightly more
-
-        # Dynamic flag contributions using a loop
-        flag_weights = {
-            "sent_messages_after_joining": 50,
-            "messaged_within_30_days": 100,
-            "above_100_messages": 150,
-            "below_10_messages": -50,
-            "never_messaged": -200,
-            "no_role_assigned": -100,
-            "low_interaction_high_activity": -150
-        }
-        for flag, weight in flag_weights.items():
-            if row.get(flag):
-                score += weight
-
-        # Time adjustment based on recency using loops
-        days = int(row.get("days_since_last_message", 0))
-        if days <= 7:
-            for _ in range(7 - days):
-                score += 10
-        elif days > 30:
-            for _ in range(days - 30):
-                score -= 5
-
-        return score
+        # Replace inline calculation with shared score calculation
+        return calculate_score(row)
 
     async def get_user_data(self, user_id):
         """Retrieve user data for a given user ID."""

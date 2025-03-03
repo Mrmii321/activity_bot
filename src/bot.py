@@ -7,6 +7,7 @@ from utils.db import Database
 from Variables.sensitiveVars import SensitiveVariables
 from cogs.flag_scanner import FlagScanner
 from cogs.leaderboard import Leaderboard
+import atexit
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,3 +42,8 @@ flask_thread.start()
 logger.info('Running bot')
 bot.run(sensitive_vars.bot_token)
 logger.info('Bot has stopped')
+def stop_flask_thread():
+    logger.info('Stopping Flask web server')
+    flask_thread.join()
+
+atexit.register(stop_flask_thread)

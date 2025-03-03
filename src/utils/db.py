@@ -46,6 +46,13 @@ class Database:
                 score INTEGER DEFAULT 0
             )
         ''')
+        # Create users table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL
+            )
+        ''')
         self.conn.commit()
 
     def initialize_db(self):

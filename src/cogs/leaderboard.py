@@ -2,8 +2,19 @@ import discord
 from discord.ext import commands
 import aiohttp
 import logging
+import pandas as pd  # Added import for pandas
 
 logger = logging.getLogger(__name__)
+
+# New function to provide leaderboard data for the webapp
+
+def get_leaderboard():
+    data = {
+        "username": ["User1", "User2", "User3"],
+        "score": [100, 200, 150]
+    }
+    return pd.DataFrame(data)
+
 
 class Leaderboard(commands.Cog):
     def __init__(self, bot):
@@ -12,13 +23,15 @@ class Leaderboard(commands.Cog):
         self.endpoint = r'http://localhost:8000/leaderboard'
 
     @commands.command(name='leaderboard')
-    async def leaderboard(self, ctx):
+    async def leaderboard(self, ctx, limit: int = 10):
+        """Get the leaderboard of top users."""
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(self.endpoint) as resp:
+                params = {'limit': limit}
+                async with session.get(self.endpoint, params=params) as resp:
                     if resp.status == 200:
                         data = await resp.text()
-                        await ctx.send(f'Leaderboard:\n{data}')
+                        await ctx.send(f'Leaderboard:\n```{data}```')
                     else:
                         await ctx.send('Could not fetch leaderboard data.')
             except Exception as e:
